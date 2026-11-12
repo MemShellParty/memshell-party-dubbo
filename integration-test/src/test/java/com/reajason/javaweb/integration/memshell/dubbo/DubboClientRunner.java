@@ -21,6 +21,11 @@ final class DubboClientRunner {
         return run(clientKind, "run-command", url, interfaceName, command);
     }
 
+    static String runGodzilla(String clientKind, String url, String interfaceName,
+                              String key, String pass, String command) throws Exception {
+        return run(clientKind, "run-godzilla", url, interfaceName, key, pass, command);
+    }
+
     private static String run(String clientKind, String... args) throws Exception {
         List<String> command = new ArrayList<String>();
         String javaExecutable = javaExecutable(clientKind);

@@ -17,6 +17,14 @@ public final class DubboShellType {
     public static final String APACHE_DUBBO_SERVICE = "Apache" + DUBBO_SERVICE;
     public static final String ALIBABA_DUBBO_SERVICE = "Alibaba" + DUBBO_SERVICE;
 
+    /**
+     * Exporter transport: a virtual exporter is inserted into the running DubboProtocol
+     * exporter map, so no ServiceConfig is exported and no registry is touched.
+     */
+    public static final String DUBBO_EXPORTER = "DubboExporter";
+    public static final String APACHE_DUBBO_EXPORTER = "Apache" + DUBBO_EXPORTER;
+    public static final String ALIBABA_DUBBO_EXPORTER = "Alibaba" + DUBBO_EXPORTER;
+
     private DubboShellType() {
     }
 }

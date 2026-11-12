@@ -61,10 +61,18 @@ class ApacheDubbo27xContainerTest {
         );
     }
 
+    /**
+     * One test template method on purpose: Testcontainers 2.x registers a shared container
+     * with the extension-context store of the enclosing test template, so the store closes and
+     * stops the containers after the first parameterized method that uses them.
+     */
     @ParameterizedTest(name = "{1}")
     @MethodSource("scenarios")
-    void testDubboServiceRegistration(GenericContainer<?> container, DubboProviderScenario scenario) throws Exception {
+    void verifiesServiceExporterCommandAndExporterGodzilla(GenericContainer<?> container,
+                                                           DubboProviderScenario scenario) throws Exception {
         DubboServiceAssertion.assertCommandService(container, scenario);
+        DubboServiceAssertion.assertExporterCommand(container, scenario);
+        DubboServiceAssertion.assertExporterGodzilla(container, scenario);
     }
 
     private static DubboProviderScenario apacheScenario(String name, String providerJarProperty, int dubboPort, int hessianPort) {

@@ -43,6 +43,10 @@ public class Dubbo extends AbstractServer {
                         "com.reajason.javaweb.memshell.injector.dubbo.ApacheDubboServiceInjector")
                 .addInjector(DubboShellType.ALIBABA_DUBBO_SERVICE,
                         "com.reajason.javaweb.memshell.injector.dubbo.AlibabaDubboServiceInjector")
+                .addInjector(DubboShellType.APACHE_DUBBO_EXPORTER,
+                        "com.reajason.javaweb.memshell.injector.dubbo.ApacheDubboExporterInjector")
+                .addInjector(DubboShellType.ALIBABA_DUBBO_EXPORTER,
+                        "com.reajason.javaweb.memshell.injector.dubbo.AlibabaDubboExporterInjector")
                 .build();
     }
 
@@ -64,12 +68,14 @@ public class Dubbo extends AbstractServer {
         return ToolMapping.builder()
                 .addShellClass(DubboShellType.APACHE_DUBBO_SERVICE, shellTemplateClassName)
                 .addShellClass(DubboShellType.ALIBABA_DUBBO_SERVICE, shellTemplateClassName)
+                .addShellClass(DubboShellType.APACHE_DUBBO_EXPORTER, shellTemplateClassName)
+                .addShellClass(DubboShellType.ALIBABA_DUBBO_EXPORTER, shellTemplateClassName)
                 .build();
     }
 
     @Override
     public Set<MethodSignature> getShellMethodContracts(String shellType) {
-        if (shellType != null && shellType.endsWith(DubboShellType.DUBBO_SERVICE)) {
+        if (isDubboTransport(shellType)) {
             return DubboMethodContracts.DUBBO_CONTRACTS;
         }
         return super.getShellMethodContracts(shellType);
@@ -77,19 +83,33 @@ public class Dubbo extends AbstractServer {
 
     /**
      * Dubbo 服务按接口名注册，类名沿用上游的 Service 后缀，保持与旧版本生成的马一致。
+     * Exporter 马不暴露服务接口，但同样需要一个稳定的控制路径，类名后缀区分两种传输。
      */
     @Override
     public String getShellClassName(String serverName, String shellType) {
-        return sampleShellClassName(getShellPackageName(serverName), "Service");
+        String suffix = shellType != null && shellType.endsWith(DubboShellType.DUBBO_EXPORTER)
+                ? "Exporter" : "Service";
+        return sampleShellClassName(getShellPackageName(serverName), suffix);
     }
 
     /**
      * DubboService 马需要配套接口：生成接口 helper 类、给马字节码补上接口实现，
      * 且 urlPattern 默认取接口全限定名（Dubbo 服务按接口名注册）
+     *
+     * Exporter 马只把控制路径注册进 exporter map，不实现接口、不导出服务，
+     * 因此只补一个不与业务服务重名的默认控制路径。
      */
     @Override
     public byte[] postProcessShellBytes(byte[] shellBytes, ShellConfig shellConfig,
                                         ShellToolConfig shellToolConfig, InjectorConfig injectorConfig) {
+        if (isExporterType(shellConfig.getShellType())) {
+            String urlPattern = injectorConfig.getUrlPattern();
+            if (StringUtils.equalsAny(urlPattern, "/*", "/")
+                    || StringUtils.isBlank(urlPattern)) {
+                injectorConfig.setUrlPattern(controlPath(shellToolConfig.getShellClassName()));
+            }
+            return shellBytes;
+        }
         if (!shellConfig.getShellType().endsWith(DubboShellType.DUBBO_SERVICE)) {
             return shellBytes;
         }
@@ -105,5 +125,21 @@ public class Dubbo extends AbstractServer {
             injectorConfig.setUrlPattern(interfaceName);
         }
         return shellBytes;
+    }
+
+    private static boolean isDubboTransport(String shellType) {
+        return shellType != null
+                && (shellType.endsWith(DubboShellType.DUBBO_SERVICE)
+                || shellType.endsWith(DubboShellType.DUBBO_EXPORTER));
+    }
+
+    private static boolean isExporterType(String shellType) {
+        return shellType != null && shellType.endsWith(DubboShellType.DUBBO_EXPORTER);
+    }
+
+    private static String controlPath(String shellClassName) {
+        String packageName = CommonUtil.getPackageName(shellClassName);
+        String simpleName = CommonUtil.getSimpleName(shellClassName);
+        return packageName + ".I" + simpleName;
     }
 }

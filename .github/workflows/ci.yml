@@ -110,6 +110,9 @@ jobs:
           jar=$(ls dubbo-plugin/build/libs/*-dubbo-plugin-*.jar)
           unzip -l "$jar" | grep -q 'server/dubbo/Dubbo.class'
           unzip -l "$jar" | grep -q 'injector/dubbo/ApacheDubboServiceInjector.class'
+          unzip -l "$jar" | grep -q 'injector/dubbo/AlibabaDubboServiceInjector.class'
+          unzip -l "$jar" | grep -q 'injector/dubbo/ApacheDubboExporterInjector.class'
+          unzip -l "$jar" | grep -q 'injector/dubbo/AlibabaDubboExporterInjector.class'
           unzip -l "$jar" | grep -q 'com/alibaba/dubbo/config/ServiceConfig.class'
           service='META-INF/services/com.reajason.javaweb.memshell.spi.ServerProvider'
           test "$(unzip -p "$jar" "$service")" = \

@@ -36,13 +36,14 @@ class ProvidedPluginsTest {
     }
 
     @Test
-    void everyOverrideNamesBothDubboTransportsWithAResolvableTemplate() {
+    void everyOverrideNamesAllDubboTransportsWithAResolvableTemplate() {
         Dubbo server = new Dubbo();
         for (Map.Entry<String, ToolMapping> entry : server.getToolMappingOverrides().entrySet()) {
             ToolMapping mapping = entry.getValue();
             assertThat(mapping, notNullValue());
             assertThat(mapping.getShellClassMap().keySet(), containsInAnyOrder(
-                    DubboShellType.APACHE_DUBBO_SERVICE, DubboShellType.ALIBABA_DUBBO_SERVICE));
+                    DubboShellType.APACHE_DUBBO_SERVICE, DubboShellType.ALIBABA_DUBBO_SERVICE,
+                    DubboShellType.APACHE_DUBBO_EXPORTER, DubboShellType.ALIBABA_DUBBO_EXPORTER));
             for (String template : mapping.getShellClassMap().values()) {
                 assertTrue(classExists(template), entry.getKey() + " template not found: " + template);
             }

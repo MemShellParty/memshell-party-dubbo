@@ -52,11 +52,31 @@ final class DubboProviderScenario {
         return commandTargets;
     }
 
+    /**
+     * The exporter lives in the DubboProtocol exporter map, so only the dubbo protocol port
+     * carries it. Hessian and tri have no exporter map and are excluded on purpose.
+     */
+    DubboProtocolTarget dubboTarget() {
+        for (DubboProtocolTarget target : commandTargets) {
+            if ("dubbo".equals(target.protocol())) {
+                return target;
+            }
+        }
+        throw new IllegalStateException(name + " has no dubbo protocol target");
+    }
+
     String shellType() {
         if ("alibaba".equals(clientKind)) {
             return DubboShellType.ALIBABA_DUBBO_SERVICE;
         }
         return DubboShellType.APACHE_DUBBO_SERVICE;
+    }
+
+    String exporterShellType() {
+        if ("alibaba".equals(clientKind)) {
+            return DubboShellType.ALIBABA_DUBBO_EXPORTER;
+        }
+        return DubboShellType.APACHE_DUBBO_EXPORTER;
     }
 
     @Override

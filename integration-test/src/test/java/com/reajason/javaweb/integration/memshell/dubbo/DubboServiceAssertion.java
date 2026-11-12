@@ -20,6 +20,8 @@ final class DubboServiceAssertion {
 
     private static final String LOADER_INTERFACE = "io.github.reajason.dubbo.fixture.api.BytecodeLoadingService";
     private static final String COMMAND = "id";
+    private static final String GODZILLA_KEY = "key";
+    private static final String GODZILLA_PASS = "pass";
 
     private DubboServiceAssertion() {
     }
@@ -33,22 +35,72 @@ final class DubboServiceAssertion {
                 shellToolConfig
         );
         String interfaceName = result.getInjectorConfig().getUrlPattern();
-        String host = container.getHost();
-        String loaderUrl = "dubbo://" + host + ":" + container.getMappedPort(scenario.loaderPort()) + "/" + LOADER_INTERFACE;
-
-        log.info("loading {} into {} via {}", interfaceName, scenario.name(), loaderUrl);
-        String loadOutput = DubboClientRunner.loadBytes(scenario.clientKind(), loaderUrl, result.getInjectorBytesBase64Str());
-        log.info("{} load output: {}", scenario.name(), loadOutput);
+        String loadOutput = loadInjector(container, scenario, result);
 
         List<String> fallbackUrls = scenario.commandTargets().stream()
-                .map(target -> target.url(host, container.getMappedPort(target.port()), interfaceName))
+                .map(target -> target.url(container.getHost(),
+                        container.getMappedPort(target.port()), interfaceName))
                 .collect(Collectors.toList());
         List<String> commandUrls = DubboUrlResolver.resolveCommandUrls(loadOutput, interfaceName, fallbackUrls);
 
         for (String commandUrl : commandUrls) {
-            String output = DubboClientRunner.runCommand(scenario.clientKind(), commandUrl, interfaceName, COMMAND);
-            log.info("{} {} command output: {}", scenario.name(), DubboUrlResolver.protocolOf(commandUrl), output);
-            assertThat(output, anyOf(containsString("uid="), containsString("injected-ok")));
+            assertCommandOutput(scenario, commandUrl, interfaceName);
         }
+    }
+
+    static void assertExporterCommand(GenericContainer<?> container, DubboProviderScenario scenario) throws Exception {
+        MemShellResult result = DubboTestSupport.generate(
+                scenario.exporterShellType(),
+                ShellTool.Command,
+                scenario.targetJdkVersion(),
+                DubboTestSupport.commandConfig()
+        );
+        String controlPath = result.getInjectorConfig().getUrlPattern();
+        loadInjector(container, scenario, result);
+
+        assertCommandOutput(scenario, exporterUrl(container, scenario, controlPath), controlPath);
+    }
+
+    static void assertExporterGodzilla(GenericContainer<?> container, DubboProviderScenario scenario) throws Exception {
+        MemShellResult result = DubboTestSupport.generate(
+                scenario.exporterShellType(),
+                ShellTool.Godzilla,
+                scenario.targetJdkVersion(),
+                DubboTestSupport.godzillaConfig()
+        );
+        String controlPath = result.getInjectorConfig().getUrlPattern();
+        loadInjector(container, scenario, result);
+
+        String url = exporterUrl(container, scenario, controlPath);
+        String output = DubboClientRunner.runGodzilla(
+                scenario.clientKind(), url, controlPath, GODZILLA_KEY, GODZILLA_PASS, COMMAND);
+        log.info("{} exporter godzilla output: {}", scenario.name(), output);
+        assertThat(scenario.name() + " godzilla command output", output, containsString("uid="));
+    }
+
+    private static String loadInjector(GenericContainer<?> container, DubboProviderScenario scenario,
+                                       MemShellResult result) throws Exception {
+        String loaderUrl = "dubbo://" + container.getHost() + ":"
+                + container.getMappedPort(scenario.loaderPort()) + "/" + LOADER_INTERFACE;
+        log.info("loading {} into {} via {}", result.getInjectorConfig().getUrlPattern(),
+                scenario.name(), loaderUrl);
+        String loadOutput = DubboClientRunner.loadBytes(
+                scenario.clientKind(), loaderUrl, result.getInjectorBytesBase64Str());
+        log.info("{} load output: {}", scenario.name(), loadOutput);
+        return loadOutput;
+    }
+
+    private static String exporterUrl(GenericContainer<?> container, DubboProviderScenario scenario,
+                                      String controlPath) {
+        DubboProtocolTarget target = scenario.dubboTarget();
+        return target.url(container.getHost(), container.getMappedPort(target.port()), controlPath);
+    }
+
+    private static void assertCommandOutput(DubboProviderScenario scenario,
+                                            String commandUrl, String interfaceName) throws Exception {
+        String output = DubboClientRunner.runCommand(scenario.clientKind(), commandUrl, interfaceName, COMMAND);
+        log.info("{} {} command output: {}", scenario.name(),
+                DubboUrlResolver.protocolOf(commandUrl), output);
+        assertThat(output, anyOf(containsString("uid="), containsString("injected-ok")));
     }
 }

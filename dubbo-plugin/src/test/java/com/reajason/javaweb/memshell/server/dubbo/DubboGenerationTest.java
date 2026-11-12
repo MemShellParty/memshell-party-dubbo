@@ -29,6 +29,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -48,28 +49,57 @@ class DubboGenerationTest {
 
     @ParameterizedTest
     @MethodSource("tools")
-    void generatesBothDubboTransportsForEachProvidedTool(String shellTool) {
+    void generatesEveryDubboTransportForEachProvidedTool(String shellTool) {
         assertThatSupported(shellTool);
 
         for (String shellType : new String[]{
-                DubboShellType.APACHE_DUBBO_SERVICE, DubboShellType.ALIBABA_DUBBO_SERVICE}) {
+                DubboShellType.APACHE_DUBBO_SERVICE, DubboShellType.ALIBABA_DUBBO_SERVICE,
+                DubboShellType.APACHE_DUBBO_EXPORTER, DubboShellType.ALIBABA_DUBBO_EXPORTER}) {
             MemShellResult result = generate(shellType, shellTool);
 
             assertNotNull(result.getShellBytes(), shellType + " shell bytes");
             assertTrue(result.getShellBytes().length > 0, shellType + " shell bytes empty");
-            assertNotNull(result.getHelperBytes(), shellType + " helper bytes");
-            assertTrue(result.getHelperBytes().length > 0, shellType + " helper bytes empty");
             assertNotNull(result.getInjectorBytesBase64Str(), shellType + " injector bytes");
 
-            String interfaceName = result.getInjectorConfig().getUrlPattern();
-            assertEquals(result.getHelperClassName(), interfaceName);
-
             ClassInfo shell = ClassInfo.read(result.getShellBytes());
-            assertTrue(shell.interfaces.contains(interfaceName.replace('.', '/')),
-                    shellType + " shell must implement " + interfaceName);
             assertTrue(shell.methods.contains("handle([B)[B"),
                     shellType + " shell must keep the Dubbo handle method, got " + shell.methods);
+
+            if (shellType.endsWith(DubboShellType.DUBBO_EXPORTER)) {
+                assertExporterResult(result, shellType, shell);
+                continue;
+            }
+            assertHelperBackedService(result, shellType, shell);
         }
+    }
+
+    private static void assertHelperBackedService(MemShellResult result, String shellType,
+                                                  ClassInfo shell) {
+        assertNotNull(result.getHelperBytes(), shellType + " helper bytes");
+        assertTrue(result.getHelperBytes().length > 0, shellType + " helper bytes empty");
+
+        String interfaceName = result.getInjectorConfig().getUrlPattern();
+        assertEquals(result.getHelperClassName(), interfaceName);
+        assertTrue(shell.interfaces.contains(interfaceName.replace('.', '/')),
+                shellType + " shell must implement " + interfaceName);
+    }
+
+    /**
+     * An exporter shell exports no interface and needs no helper, so the control path must be
+     * derived from the shell class name instead of a generated service interface.
+     */
+    private static void assertExporterResult(MemShellResult result, String shellType,
+                                             ClassInfo shell) {
+        assertNull(result.getHelperBytes(), shellType + " must not generate a helper interface");
+        assertTrue(shell.interfaces.isEmpty(),
+                shellType + " must not implement an interface, got " + shell.interfaces);
+
+        String controlPath = result.getInjectorConfig().getUrlPattern();
+        String expected = result.getShellClassName().substring(
+                0, result.getShellClassName().lastIndexOf('.'))
+                + ".I" + result.getShellClassName()
+                .substring(result.getShellClassName().lastIndexOf('.') + 1);
+        assertEquals(expected, controlPath, shellType + " control path");
     }
 
     @Test
@@ -87,6 +117,12 @@ class DubboGenerationTest {
         MemShellResult alibaba = generate(DubboShellType.ALIBABA_DUBBO_SERVICE, ShellTool.Command);
         assertNotEquals(apache.getInjectorClassName(), alibaba.getInjectorClassName());
         assertNotEquals(apache.getInjectorBytesBase64Str(), alibaba.getInjectorBytesBase64Str());
+
+        MemShellResult apacheExporter = generate(DubboShellType.APACHE_DUBBO_EXPORTER, ShellTool.Command);
+        MemShellResult alibabaExporter = generate(DubboShellType.ALIBABA_DUBBO_EXPORTER, ShellTool.Command);
+        assertNotEquals(apacheExporter.getInjectorClassName(), apache.getInjectorClassName());
+        assertNotEquals(alibabaExporter.getInjectorClassName(), alibaba.getInjectorClassName());
+        assertNotEquals(apacheExporter.getInjectorClassName(), alibabaExporter.getInjectorClassName());
     }
 
     @Test
@@ -119,6 +155,10 @@ class DubboGenerationTest {
                 shellTool + " must advertise ApacheDubboService, got " + supported);
         assertTrue(supported.contains(DubboShellType.ALIBABA_DUBBO_SERVICE),
                 shellTool + " must advertise AlibabaDubboService, got " + supported);
+        assertTrue(supported.contains(DubboShellType.APACHE_DUBBO_EXPORTER),
+                shellTool + " must advertise ApacheDubboExporter, got " + supported);
+        assertTrue(supported.contains(DubboShellType.ALIBABA_DUBBO_EXPORTER),
+                shellTool + " must advertise AlibabaDubboExporter, got " + supported);
     }
 
     private static MemShellResult generate(String shellType, String shellTool) {

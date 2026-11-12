@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -32,6 +33,8 @@ class PluginJarExtensionTest {
     private static final String SERVER = "Dubbo";
     private static final String APACHE = "ApacheDubboService";
     private static final String ALIBABA = "AlibabaDubboService";
+    private static final String APACHE_EXPORTER = "ApacheDubboExporter";
+    private static final String ALIBABA_EXPORTER = "AlibabaDubboExporter";
 
     private static Path pluginDirectory;
 
@@ -54,12 +57,13 @@ class PluginJarExtensionTest {
     }
 
     @Test
-    void advertisesEveryProvidedToolForBothTransports() {
+    void advertisesEveryProvidedToolForEveryTransport() {
         for (String tool : new String[]{ShellTool.Command, ShellTool.Godzilla, ShellTool.Proxy}) {
             assertTrue(MemShellRegistry.getInstance().getSupportedTools().contains(tool),
                     "tool registry: " + MemShellRegistry.getInstance().getSupportedTools());
             assertTrue(MemShellRegistry.getInstance().getServer(SERVER)
-                            .getSupportedShellTypes(tool).containsAll(java.util.List.of(APACHE, ALIBABA)),
+                            .getSupportedShellTypes(tool).containsAll(
+                                    java.util.List.of(APACHE, ALIBABA, APACHE_EXPORTER, ALIBABA_EXPORTER)),
                     tool + " transports: "
                             + MemShellRegistry.getInstance().getServer(SERVER).getSupportedShellTypes(tool));
         }
@@ -69,17 +73,34 @@ class PluginJarExtensionTest {
     void generatesShellHelperAndInjectorForEveryToolAndTransport() {
         for (String tool : new String[]{ShellTool.Command, ShellTool.Godzilla, ShellTool.Proxy}) {
             for (String transport : new String[]{APACHE, ALIBABA}) {
-                MemShellResult result = generate(transport, tool);
-                assertNotNull(result.getShellBytes(), tool + "/" + transport + " shell bytes");
-                assertTrue(result.getShellBytes().length > 0, tool + "/" + transport + " shell empty");
-                assertNotNull(result.getHelperBytes(), tool + "/" + transport + " helper bytes");
-                assertTrue(result.getHelperBytes().length > 0, tool + "/" + transport + " helper empty");
-                assertNotNull(result.getInjectorBytesBase64Str(), tool + "/" + transport + " injector");
-                assertTrue(result.getInjectorConfig().getUrlPattern()
-                                .equals(result.getHelperClassName()),
-                        tool + "/" + transport + " url pattern must be the service interface");
+                assertServiceToolResult(tool, transport, generate(transport, tool));
+            }
+            for (String transport : new String[]{APACHE_EXPORTER, ALIBABA_EXPORTER}) {
+                assertExporterToolResult(tool, transport, generate(transport, tool));
             }
         }
+    }
+
+    private static void assertServiceToolResult(String tool, String transport, MemShellResult result) {
+        String label = tool + "/" + transport;
+        assertNotNull(result.getShellBytes(), label + " shell bytes");
+        assertTrue(result.getShellBytes().length > 0, label + " shell empty");
+        assertNotNull(result.getHelperBytes(), label + " helper bytes");
+        assertTrue(result.getHelperBytes().length > 0, label + " helper empty");
+        assertNotNull(result.getInjectorBytesBase64Str(), label + " injector");
+        assertTrue(result.getInjectorConfig().getUrlPattern().equals(result.getHelperClassName()),
+                label + " url pattern must be the service interface");
+    }
+
+    private static void assertExporterToolResult(String tool, String transport, MemShellResult result) {
+        String label = tool + "/" + transport;
+        assertNotNull(result.getShellBytes(), label + " shell bytes");
+        assertTrue(result.getShellBytes().length > 0, label + " shell empty");
+        assertNull(result.getHelperBytes(), label + " must not generate a helper interface");        assertNotNull(result.getInjectorBytesBase64Str(), label + " injector");
+        assertTrue(result.getInjectorConfig().getUrlPattern().endsWith(
+                        ".I" + result.getShellClassName().substring(
+                                result.getShellClassName().lastIndexOf('.') + 1)),
+                label + " control path must derive from the shell class name");
     }
 
     private static MemShellResult generate(String shellType, String shellTool) {

@@ -33,4 +33,14 @@ class AlibabaDubbo2612ContainerTest {
     void testDubboServiceRegistration() throws Exception {
         DubboServiceAssertion.assertCommandService(container, SCENARIO);
     }
+
+    @Test
+    void testExporterCommand() throws Exception {
+        DubboServiceAssertion.assertExporterCommand(container, SCENARIO);
+    }
+
+    @Test
+    void testExporterGodzilla() throws Exception {
+        DubboServiceAssertion.assertExporterGodzilla(container, SCENARIO);
+    }
 }
