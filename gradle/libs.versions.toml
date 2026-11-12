@@ -1,0 +1,36 @@
+[versions]
+metainf-services = "1.11"
+shadow = "9.4.1"
+javassist = "3.30.2-GA"
+
+junit-jupiter = "5.14.4"
+junit-platform = "1.14.4"
+hamcrest = "3.0"
+testcontainers = "2.0.5"
+slf4j = "2.0.17"
+logback = "1.5.38"
+
+[libraries]
+metainf-services = { module = "org.kohsuke.metainf-services:metainf-services", version.ref = "metainf-services" }
+javassist = { module = "org.javassist:javassist", version.ref = "javassist" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+hamcrest = { module = "org.hamcrest:hamcrest", version.ref = "hamcrest" }
+testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+javax-servlet-api = { module = "javax.servlet:javax.servlet-api", version = "4.0.1" }
+jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api", version = "5.0.0" }
+javax-websocket-api = { module = "javax.websocket:javax.websocket-api", version = "1.1" }
+netty-all = { module = "io.netty:netty-all", version = "4.1.25.Final" }
+spring-webmvc = { module = "org.springframework:spring-webmvc", version = "5.3.24" }
+spring-webflux = { module = "org.springframework:spring-webflux", version = "5.3.24" }
+stub-jetty = { module = "io.github.reajason:memshell-party-stub-jetty", version = "3.0.0" }
+stub-tomcat = { module = "io.github.reajason:memshell-party-stub-tomcat", version = "3.0.0" }
+
+[bundles]
+testcontainers = ["testcontainers", "testcontainers-junit-jupiter"]
+
+[plugins]
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }

@@ -1,0 +1,178 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  unit-test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run unit tests
+        run: >
+          ./gradlew
+          :dubbo-plugin:test
+          :dubbo-client:test
+          :plugin-verification:test
+          --console=plain
+          --stacktrace
+
+      - name: Export unit test report
+        uses: mikepenz/action-junit-report@v6
+        if: success() || failure()
+        with:
+          check_name: 'Unit tests'
+          report_paths: '**/build/test-results/*/TEST-*.xml'
+
+  integration-test:
+    name: Integration tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run integration tests
+        run: >
+          ./gradlew
+          :integration-test:test
+          :integration-test:dubboContainerTest
+          -PitParallelism=1
+          --console=plain
+          --stacktrace
+
+      - name: Export integration test report
+        uses: mikepenz/action-junit-report@v6
+        if: success() || failure()
+        with:
+          check_name: 'Integration tests'
+          report_paths: '**/build/test-results/*/TEST-*.xml'
+
+  package:
+    name: Package plugin
+    needs: [unit-test, integration-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build plugin jar
+        run: ./gradlew :dubbo-plugin:shadowJar --console=plain --stacktrace
+
+      - name: Verify jar layout
+        run: |
+          set -euo pipefail
+          jar=$(ls dubbo-plugin/build/libs/*-dubbo-plugin-*.jar)
+          unzip -l "$jar" | grep -q 'server/dubbo/Dubbo.class'
+          unzip -l "$jar" | grep -q 'injector/dubbo/ApacheDubboServiceInjector.class'
+          unzip -l "$jar" | grep -q 'com/alibaba/dubbo/config/ServiceConfig.class'
+          service='META-INF/services/com.reajason.javaweb.memshell.spi.ServerProvider'
+          test "$(unzip -p "$jar" "$service")" = \
+            'com.reajason.javaweb.memshell.server.dubbo.DubboServerProvider'
+          if unzip -l "$jar" | grep -q 'shelltool/command/CommandShellToolProvider.class'; then
+            echo 'plugin jar must not bundle upstream tool classes' >&2
+            exit 1
+          fi
+
+      - name: Write checksum
+        run: |
+          cd dubbo-plugin/build/libs
+          sha256sum *-dubbo-plugin-*.jar > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dubbo-plugin
+          path: |
+            dubbo-plugin/build/libs/*-dubbo-plugin-*.jar
+            dubbo-plugin/build/libs/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  verify-artifact:
+    name: Verify downloaded artifact
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Download plugin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dubbo-plugin
+          path: downloaded-plugin
+
+      - name: Verify checksum
+        run: cd downloaded-plugin && sha256sum -c SHA256SUMS
+
+      - name: Load downloaded jar through PluginBootstrap
+        run: |
+          jar=$(ls downloaded-plugin/*-dubbo-plugin-*.jar)
+          ./gradlew :plugin-verification:test \
+            -PdubboPluginJar="$PWD/$jar" \
+            --console=plain \
+            --stacktrace
+
+      - name: Export artifact test report
+        uses: mikepenz/action-junit-report@v6
+        if: success() || failure()
+        with:
+          check_name: 'Downloaded artifact'
+          report_paths: 'plugin-verification/build/test-results/test/TEST-*.xml'
